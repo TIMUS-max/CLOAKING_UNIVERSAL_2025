@@ -1,0 +1,8 @@
+{
+  "name": "azure-cloaking-2025",
+  "version": "1.0.0",
+  "description": "Universal cloaking system",
+  "scripts": {
+    "build": "echo 'No build needed - static files'"
+  }
+}
